@@ -10,7 +10,7 @@
     <header class="hero">
       <h1>Your Voice Matters. Shape the Future.</h1>
       <p>Empowering young women in Nigeria to learn, practice, and engage in politics and governance.</p>
-      <NuxtLink to="/auth/signup" class="btn-secondary hero-btn">Start Learning Now</NuxtLink>
+      <NuxtLink to="/auth/signup" class="btn-primary hero-btn">Start Learning Now</NuxtLink>
     </header>
   </div>
 </template>

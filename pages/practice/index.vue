@@ -31,6 +31,7 @@
 
 <script setup>
 import { ref, computed } from 'vue';
+const { error: showError, success: showSuccess } = useToast();
 
 const time = ref(120); // 2 minutes
 const isRunning = ref(false);
@@ -63,8 +64,8 @@ const resetTimer = () => {
 
 const policy = ref('');
 const submitPolicy = () => {
-    if(!policy.value.trim()) return alert("Please write a draft first!");
-    alert("Draft submitted successfully! Keep practicing to refine your ideas.");
+    if(!policy.value.trim()) return showError('Please write a draft first!');
+    showSuccess('Draft submitted successfully! Keep practicing to refine your ideas.');
     policy.value = '';
 }
 </script>

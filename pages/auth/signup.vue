@@ -15,7 +15,13 @@
            <label>Password</label>
            <input type="password" v-model="form.password" required />
         </div>
-        <button type="submit" class="btn-primary w-full">Sign Up</button>
+        <button type="submit" class="btn-primary w-full signup-btn" :disabled="loading">
+          <span v-if="loading" class="btn-content">
+            <Loader2 :size="18" class="spinner" aria-hidden="true" />
+            Signing up...
+          </span>
+          <span v-else>Sign Up</span>
+        </button>
       </form>
       <p class="switch-auth">Already have an account? <NuxtLink to="/auth/login">Login</NuxtLink></p>
     </div>
@@ -25,13 +31,17 @@
 <script setup>
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
+import { Loader2 } from 'lucide-vue-next';
 
 const form = ref({ name: '', email: '', password: '' });
+const loading = ref(false);
 const router = useRouter();
 const config = useRuntimeConfig();
+const { error: showError } = useToast();
 
 const signup = async () => {
     try {
+      loading.value = true;
     const res = await $fetch(`${config.public.apiBase}/auth/signup`, {
             method: 'POST',
             body: form.value
@@ -39,7 +49,9 @@ const signup = async () => {
         localStorage.setItem('token', res.token);
         router.push('/dashboard');
     } catch(err) {
-        alert(err.data?.message || 'Error signing up');
+        showError(err.data?.message || 'Error signing up');
+    } finally {
+      loading.value = false;
     }
 }
 </script>
@@ -66,6 +78,14 @@ input {
 }
 input:focus { border-color: var(--primary); }
 .w-full { width: 100%; margin-top: 1rem; }
+.signup-btn { display: inline-flex; align-items: center; justify-content: center; }
+.btn-content { display: inline-flex; align-items: center; gap: 0.5rem; }
+.spinner { animation: spin 0.8s linear infinite; }
 .switch-auth { text-align: center; margin-top: 1rem; font-size: 0.9rem; }
 .switch-auth a { color: var(--primary); text-decoration: none; font-weight: 600; }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
 </style>

@@ -1,11 +1,25 @@
+@import "tailwindcss";
+
 :root {
-  --primary: #6B21A8; /* Purple */
+  --primary: #6B21A8;
+  /* Purple */
   --primary-light: #9333EA;
-  --secondary: #FBBF24; /* Gold */
+  --secondary: #FBBF24;
+  /* Gold */
   --bg-color: #FAFAFA;
   --text-main: #1F2937;
   --text-muted: #6B7280;
   --white: #FFFFFF;
+}
+
+@theme {
+  --color-primary: #6B21A8;
+  --color-primary-light: #9333EA;
+  --color-secondary: #FBBF24;
+  --color-bg-color: #FAFAFA;
+  --color-text-main: #1F2937;
+  --color-text-muted: #6B7280;
+  --color-white: #FFFFFF;
 }
 
 body {
@@ -27,23 +41,6 @@ body {
   padding: 0 1rem;
 }
 
-.btn-primary {
-  background: var(--primary);
-  color: var(--white);
-  border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 8px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-primary:hover {
-  background: var(--primary-light);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(107, 33, 168, 0.2);
-}
-
 .btn-secondary {
   background: var(--secondary);
   color: #000;
@@ -60,11 +57,29 @@ body {
   backdrop-filter: blur(10px);
   border-radius: 12px;
   padding: 1.5rem;
-  border: 1px solid rgba(255,255,255,0.2);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);
 }
 
-h1, h2, h3 {
+h1,
+h2,
+h3 {
   margin-top: 0;
   color: var(--primary);
+}
+
+.btn-primary {
+  @apply bg-primary text-white border-0 py-2 px-4 rounded-lg font-semibold cursor-pointer transition-all duration-200;
+}
+
+.btn-primary:hover {
+  @apply bg-primary-light;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(107, 33, 168, 0.2);
+}
+
+.btn-primary:disabled {
+  @apply bg-primary-light cursor-not-allowed opacity-80;
+  transform: none;
+  box-shadow: none;
 }

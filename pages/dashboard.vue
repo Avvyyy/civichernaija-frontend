@@ -5,7 +5,7 @@
         <h2>Welcome, {{ user?.name || 'Future Leader' }}!</h2>
         <p>Ready to make an impact today?</p>
       </div>
-      <button @click="logout" class="btn-secondary">Logout</button>
+      <button @click="logout" class="btn-primary">Logout</button>
     </header>
 
     <div v-if="pending" class="stats-grid">
