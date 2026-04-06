@@ -23,7 +23,7 @@
 
         <div class="reading-material mt-4">
           <h3>Lesson Content</h3>
-          <p>{{ module.content }}</p>
+          <div class="formatted-content" v-html="formattedContent"></div>
         </div>
       </div>
 
@@ -84,7 +84,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 const route = useRoute();
@@ -98,6 +98,7 @@ const quizResult = ref(null);
 const quizSubmitting = ref(false);
 const config = useRuntimeConfig();
 const { error: showError, success: showSuccess } = useToast();
+const formattedContent = computed(() => formatGeneratedHtml(module.value?.content));
 
 onMounted(async () => {
   const token = localStorage.getItem('token');
@@ -170,6 +171,65 @@ const completeModule = async () => {
     showError(err?.data?.message || 'Failed to complete module');
   }
 };
+
+function formatGeneratedHtml(content) {
+  const rawContent = String(content || '').replace(/```(?:html)?\s*/gi, '').replace(/```/g, '').trim();
+  if (!rawContent) return '';
+
+  if (typeof window === 'undefined' || typeof window.DOMParser === 'undefined') {
+    return rawContent
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\n{2,}/g, '</p><p>')
+      .replace(/\n/g, '<br>');
+  }
+
+  const parser = new DOMParser();
+  const document = parser.parseFromString(`<div>${rawContent}</div>`, 'text/html');
+  const root = document.body.firstElementChild;
+
+  if (!root) {
+    return rawContent;
+  }
+
+  const allowedTags = new Set([
+    'P', 'BR', 'STRONG', 'EM', 'B', 'I', 'U', 'SMALL', 'MARK',
+    'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'UL', 'OL', 'LI',
+    'BLOCKQUOTE', 'PRE', 'CODE', 'A', 'DIV', 'SPAN', 'SECTION',
+    'TABLE', 'THEAD', 'TBODY', 'TR', 'TH', 'TD', 'HR'
+  ]);
+
+  const allowedAttributes = new Set(['href', 'target', 'rel', 'class']);
+
+  root.querySelectorAll('script, style, iframe, object, embed, form, input, button, textarea, select, video, audio').forEach((node) => node.remove());
+
+  root.querySelectorAll('*').forEach((node) => {
+    if (!allowedTags.has(node.tagName)) {
+      const replacement = document.createTextNode(node.textContent || '');
+      node.replaceWith(replacement);
+      return;
+    }
+
+    [...node.attributes].forEach((attribute) => {
+      const name = attribute.name.toLowerCase();
+      const value = attribute.value;
+      const isEventHandler = name.startsWith('on');
+      const isUnsafeUrl = (name === 'href' || name === 'src') && /^\s*javascript:/i.test(value);
+
+      if (isEventHandler || isUnsafeUrl || !allowedAttributes.has(name)) {
+        node.removeAttribute(attribute.name);
+      }
+    });
+
+    if (node.tagName === 'A') {
+      node.setAttribute('target', '_blank');
+      node.setAttribute('rel', 'noopener noreferrer');
+    }
+  });
+
+  return root.innerHTML.trim();
+}
 </script>
 
 <style scoped>
@@ -202,6 +262,72 @@ const completeModule = async () => {
 
 .reading-material {
   line-height: 1.7;
+}
+
+.formatted-content :deep(p) {
+  margin: 0 0 1rem;
+}
+
+.formatted-content :deep(h1),
+.formatted-content :deep(h2),
+.formatted-content :deep(h3),
+.formatted-content :deep(h4),
+.formatted-content :deep(h5),
+.formatted-content :deep(h6) {
+  margin: 1.1rem 0 0.55rem;
+  color: #1f1430;
+  line-height: 1.35;
+}
+
+.formatted-content :deep(ul),
+.formatted-content :deep(ol) {
+  margin: 0 0 1rem;
+  padding-left: 1.25rem;
+}
+
+.formatted-content :deep(li) {
+  margin-bottom: 0.35rem;
+}
+
+.formatted-content :deep(blockquote) {
+  margin: 0 0 1rem;
+  padding: 0.9rem 1rem;
+  border-left: 4px solid var(--primary);
+  background: rgba(107, 33, 168, 0.06);
+  border-radius: 0 8px 8px 0;
+}
+
+.formatted-content :deep(code) {
+  padding: 0.12rem 0.35rem;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.07);
+  font-size: 0.95em;
+}
+
+.formatted-content :deep(pre) {
+  overflow-x: auto;
+  padding: 1rem;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.06);
+  margin: 0 0 1rem;
+}
+
+.formatted-content :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 1rem;
+}
+
+.formatted-content :deep(th),
+.formatted-content :deep(td) {
+  border: 1px solid #ddd6ea;
+  padding: 0.65rem 0.75rem;
+  text-align: left;
+}
+
+.formatted-content :deep(a) {
+  color: #6b21a8;
+  text-decoration: underline;
 }
 
 .question {
