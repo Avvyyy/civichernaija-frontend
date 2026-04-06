@@ -18,54 +18,89 @@
     </div>
 
     <section v-if="activeTab === 'simulations'" class="tab-panel">
-      <article class="scenario-card">
-        <span class="topic-pill">Scenario 1 of 1</span>
-        <h3>
-          Your local government has N10 million remaining in the budget. The community needs a new
-          borehole for clean water and repairs to the primary school roof. You can only fund one
-          project fully right now. What do you do?
-        </h3>
-      </article>
-
-      <div class="options-grid">
-        <label v-for="opt in simulationOptions" :key="opt.id" class="option-item" :class="{ selected: selectedOption === opt.id }">
-          <input type="radio" name="budget-choice" :value="opt.id" v-model="selectedOption" />
-          <div>
-            <strong>{{ opt.title }}</strong>
-            <p>{{ opt.desc }}</p>
-          </div>
-        </label>
+      <div v-if="loadingResources" class="loading-state">
+        <p>Loading simulations...</p>
       </div>
+      <div v-else-if="simulationResources.length === 0" class="empty-state">
+        <p>No simulations available at the moment. Check back soon!</p>
+      </div>
+      <div v-else>
+        <article class="scenario-card">
+          <span class="topic-pill">Scenario {{ currentSimulationIndex + 1 }} of {{ simulationResources.length }}</span>
+          <h3>{{ currentSimulation?.simulationScenario }}</h3>
+          <p v-if="currentSimulation?.simulationContext" class="context">
+            {{ currentSimulation.simulationContext }}
+          </p>
+        </article>
 
-      <textarea
-        v-model="simulationReason"
-        rows="5"
-        placeholder="Explain your decision clearly and confidently..."
-      ></textarea>
+        <div class="options-grid">
+          <label 
+            v-for="opt in currentSimulation?.simulationOptions || []" 
+            :key="opt.id" 
+            class="option-item" 
+            :class="{ selected: selectedOption === opt.id }"
+          >
+            <input type="radio" name="scenario-choice" :value="opt.id" v-model="selectedOption" />
+            <div>
+              <strong>{{ opt.title }}</strong>
+              <p>{{ opt.description }}</p>
+            </div>
+          </label>
+        </div>
 
-      <button class="btn-primary submit-btn" @click="submitSimulation">Submit Simulation Response</button>
+        <textarea
+          v-model="simulationReason"
+          rows="5"
+          placeholder="Explain your decision clearly and confidently..."
+        ></textarea>
+
+        <button 
+          class="btn-primary submit-btn" 
+          @click="submitSimulation"
+          :disabled="submittingSimulation || isLoading"
+        >
+          {{ submittingSimulation ? 'Submitting...' : 'Submit Simulation Response' }}
+        </button>
+      </div>
     </section>
 
     <section v-else-if="activeTab === 'mockDebate'" class="tab-panel">
-      <article class="scenario-card">
-        <div class="debate-top-row">
-          <span class="topic-pill">Topic {{ currentDebateIndex + 1 }} of {{ debateTopics.length }}</span>
-          <span class="timer">{{ formattedTime }}</span>
+      <div v-if="loadingResources" class="loading-state">
+        <p>Loading debate topics...</p>
+      </div>
+      <div v-else-if="debateResources.length === 0" class="empty-state">
+        <p>No debate topics available at the moment. Check back soon!</p>
+      </div>
+      <div v-else>
+        <article class="scenario-card">
+          <div class="debate-top-row">
+            <span class="topic-pill">Topic {{ currentDebateIndex + 1 }} of {{ debateResources.length }}</span>
+            <span class="timer">{{ formattedTime }}</span>
+          </div>
+          <h3>{{ debateResources[currentDebateIndex]?.debateTopic }}</h3>
+          <p v-if="debateResources[currentDebateIndex]?.debateContext" class="context">
+            {{ debateResources[currentDebateIndex].debateContext }}
+          </p>
+        </article>
+
+        <textarea
+          v-model="debateResponse"
+          rows="7"
+          placeholder="Share your argument. Be bold and clear."
+        ></textarea>
+
+        <div class="debate-actions">
+          <button class="btn-secondary control-btn" @click="startTimer" :disabled="isRunning || submittingDebate">Start Timer</button>
+          <button class="btn-secondary control-btn" @click="stopTimer" :disabled="!isRunning || submittingDebate">Stop Timer</button>
+          <button class="btn-secondary control-btn" @click="resetTimer" :disabled="submittingDebate">Reset</button>
+          <button 
+            class="btn-primary" 
+            @click="submitDebate"
+            :disabled="submittingDebate || isLoading"
+          >
+            {{ submittingDebate ? 'Submitting...' : 'Submit Response' }}
+          </button>
         </div>
-        <h3>{{ debateTopics[currentDebateIndex] }}</h3>
-      </article>
-
-      <textarea
-        v-model="debateResponse"
-        rows="7"
-        placeholder="Share your argument. Be bold and clear."
-      ></textarea>
-
-      <div class="debate-actions">
-        <button class="btn-secondary control-btn" @click="startTimer" :disabled="isRunning">Start Timer</button>
-        <button class="btn-secondary control-btn" @click="stopTimer" :disabled="!isRunning">Stop Timer</button>
-        <button class="btn-secondary control-btn" @click="resetTimer">Reset</button>
-        <button class="btn-primary" @click="submitDebate">Submit Response</button>
       </div>
     </section>
 
@@ -77,28 +112,50 @@
       </article>
 
       <div class="policy-fields">
-        <input v-model="policyTitle" type="text" placeholder="Policy title (example: Safer Roads Initiative)" />
+        <input 
+          v-model="policyTitle" 
+          type="text" 
+          placeholder="Policy title (example: Safer Roads Initiative)"
+          :disabled="submittingPolicy"
+        />
         <textarea
           v-model="policyProblem"
           rows="3"
           placeholder="What problem are you trying to solve?"
+          :disabled="submittingPolicy"
         ></textarea>
         <textarea
           v-model="policyProposal"
           rows="6"
           placeholder="Describe your proposed policy, who it affects, and how it will be implemented."
+          :disabled="submittingPolicy"
         ></textarea>
       </div>
 
-      <button class="btn-primary submit-btn" @click="submitPolicy">Submit Draft</button>
+      <button 
+        class="btn-primary submit-btn" 
+        @click="submitPolicy"
+        :disabled="submittingPolicy || isLoading"
+      >
+        {{ submittingPolicy ? 'Submitting...' : 'Submit Draft' }}
+      </button>
     </section>
   </div>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, ref } from 'vue';
+import { computed, onBeforeUnmount, ref, onMounted, watch } from 'vue';
+import { usePracticeAPI } from '~/composables/usePracticeAPI';
 
 const { error: showError, success: showSuccess } = useToast();
+const {
+  isLoading,
+  getSimulationResources,
+  getDebateResources,
+  submitSimulation: apiSubmitSimulation,
+  submitDebate: apiSubmitDebate,
+  submitPolicy: apiSubmitPolicy
+} = usePracticeAPI();
 
 const tabs = [
   { id: 'simulations', label: 'Simulations' },
@@ -107,29 +164,33 @@ const tabs = [
 ];
 
 const activeTab = ref('simulations');
+const loadingResources = ref(false);
 
-const simulationOptions = [
-  {
-    id: 'borehole-now',
-    title: 'Fund the borehole now',
-    desc: 'Prioritize immediate access to clean water, then plan school repairs in the next budget cycle.'
-  },
-  {
-    id: 'school-roof-now',
-    title: 'Repair the school roof now',
-    desc: 'Protect the learning environment first, then launch a short fundraising campaign for water infrastructure.'
-  },
-  {
-    id: 'hybrid-phased',
-    title: 'Negotiate a phased hybrid plan',
-    desc: 'Do urgent temporary roof fixes and begin borehole groundwork while seeking state support for completion.'
-  }
-];
-
+// Simulations
+const simulationResources = ref([]);
+const currentSimulation = ref(null);
+const currentSimulationIndex = ref(0);
 const selectedOption = ref('');
 const simulationReason = ref('');
+const submittingSimulation = ref(false);
 
-const submitSimulation = () => {
+const onSimulationTabActive = async () => {
+  if (simulationResources.value.length === 0 && !loadingResources.value) {
+    await loadSimulations();
+  }
+};
+
+const loadSimulations = async () => {
+  loadingResources.value = true;
+  const resources = await getSimulationResources();
+  simulationResources.value = resources;
+  if (resources.length > 0) {
+    currentSimulation.value = resources[currentSimulationIndex.value];
+  }
+  loadingResources.value = false;
+};
+
+const submitSimulation = async () => {
   if (!selectedOption.value) {
     showError('Select one option before submitting your simulation response.');
     return;
@@ -139,21 +200,50 @@ const submitSimulation = () => {
     return;
   }
 
-  showSuccess('Simulation response captured. You can connect backend scoring later.');
-  simulationReason.value = '';
+  submittingSimulation.value = true;
+  try {
+    await apiSubmitSimulation(
+      currentSimulation.value._id,
+      selectedOption.value,
+      simulationReason.value
+    );
+    showSuccess('Simulation submitted! Your response is being evaluated.');
+    simulationReason.value = '';
+    selectedOption.value = '';
+    
+    // Move to next simulation if available
+    if (currentSimulationIndex.value < simulationResources.value.length - 1) {
+      currentSimulationIndex.value++;
+      currentSimulation.value = simulationResources.value[currentSimulationIndex.value];
+    }
+  } catch (err) {
+    showError('Error submitting simulation: ' + err.message);
+  } finally {
+    submittingSimulation.value = false;
+  }
 };
 
-const debateTopics = [
-  'Should Nigeria adopt a parliamentary system of government instead of presidential?',
-  'Should civic education be mandatory in all secondary schools?',
-  'Should local governments reserve leadership seats for women and youth?'
-];
-
+// Debates
+const debateResources = ref([]);
 const currentDebateIndex = ref(0);
 const debateResponse = ref('');
 const isRunning = ref(false);
 const time = ref(120);
 let interval = null;
+const submittingDebate = ref(false);
+
+const onDebateTabActive = async () => {
+  if (debateResources.value.length === 0 && !loadingResources.value) {
+    await loadDebates();
+  }
+};
+
+const loadDebates = async () => {
+  loadingResources.value = true;
+  const resources = await getDebateResources();
+  debateResources.value = resources;
+  loadingResources.value = false;
+};
 
 const formattedTime = computed(() => {
   const min = Math.floor(time.value / 60);
@@ -184,36 +274,76 @@ const resetTimer = () => {
   time.value = 120;
 };
 
-const submitDebate = () => {
+const submitDebate = async () => {
   if (!debateResponse.value.trim()) {
     showError('Please draft your debate response first.');
     return;
   }
 
-  showSuccess('Debate response submitted. Great effort.');
-  debateResponse.value = '';
-  resetTimer();
-  currentDebateIndex.value = (currentDebateIndex.value + 1) % debateTopics.length;
+  submittingDebate.value = true;
+  try {
+    const currentDebate = debateResources.value[currentDebateIndex.value];
+    await apiSubmitDebate(
+      currentDebate._id,
+      currentDebateIndex.value,
+      debateResponse.value,
+      120 - time.value
+    );
+    showSuccess('Debate response submitted. Great effort.');
+    debateResponse.value = '';
+    resetTimer();
+    
+    // Move to next debate
+    currentDebateIndex.value = (currentDebateIndex.value + 1) % debateResources.value.length;
+  } catch (err) {
+    showError('Error submitting debate: ' + err.message);
+  } finally {
+    submittingDebate.value = false;
+  }
 };
 
+// Policies
 const policyTitle = ref('');
 const policyProblem = ref('');
 const policyProposal = ref('');
+const submittingPolicy = ref(false);
 
-const submitPolicy = () => {
+const submitPolicy = async () => {
   if (!policyTitle.value.trim() || !policyProblem.value.trim() || !policyProposal.value.trim()) {
     showError('Fill all policy draft fields before submitting.');
     return;
   }
 
-  showSuccess('Policy draft submitted successfully. Keep refining your ideas.');
-  policyTitle.value = '';
-  policyProblem.value = '';
-  policyProposal.value = '';
+  submittingPolicy.value = true;
+  try {
+    await apiSubmitPolicy(
+      policyTitle.value,
+      policyProblem.value,
+      policyProposal.value
+    );
+    showSuccess('Policy draft submitted successfully. Keep refining your ideas.');
+    policyTitle.value = '';
+    policyProblem.value = '';
+    policyProposal.value = '';
+  } catch (err) {
+    showError('Error submitting policy: ' + err.message);
+  } finally {
+    submittingPolicy.value = false;
+  }
 };
+
+onMounted(async () => {
+  await loadSimulations();
+});
 
 onBeforeUnmount(() => {
   clearInterval(interval);
+});
+
+watch(() => activeTab.value, (newTab) => {
+  if (newTab === 'mockDebate') {
+    onDebateTabActive();
+  }
 });
 </script>
 
@@ -395,5 +525,41 @@ textarea {
 input:focus,
 textarea:focus {
   border-color: #6b21a8;
+}
+
+input:disabled,
+textarea:disabled {
+  background: #f5f3f8;
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.btn-primary:disabled,
+.btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.loading-state,
+.empty-state {
+  padding: 3rem 2rem;
+  text-align: center;
+  background: #f4f0f8;
+  border-radius: 12px;
+  border: 1px solid #ece4f4;
+}
+
+.loading-state p,
+.empty-state p {
+  color: #5f5574;
+  font-size: 1rem;
+  margin: 0;
+}
+
+.context {
+  margin-top: 0.8rem !important;
+  margin-bottom: 0 !important;
+  color: #5f5574 !important;
+  font-size: 0.95rem !important;
 }
 </style>
