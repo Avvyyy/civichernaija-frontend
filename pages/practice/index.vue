@@ -37,6 +37,9 @@
 
       <div v-else-if="latestSubmission.evaluationStatus === 'failed'" class="feedback-body">
         <p>Evaluation failed for this submission. You can submit again or refresh to retry checking.</p>
+        <p v-if="latestSubmission.evaluationError" class="failure-reason">
+          Reason: {{ latestSubmission.evaluationError }}
+        </p>
       </div>
 
       <div v-else-if="latestSubmission.aiEvaluation" class="feedback-body">
@@ -61,6 +64,98 @@
           <h4>Suggested Next Steps</h4>
           <ul>
             <li v-for="(item, idx) in latestSubmission.aiEvaluation.suggestedNextSteps" :key="`n-${idx}`">{{ item }}</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="submission-history card-shell">
+      <div class="section-head">
+        <div>
+          <h3>My Submissions</h3>
+          <p>Open any previous practice attempt to see the current AI result.</p>
+        </div>
+        <button class="btn-secondary" @click="loadSubmissionHistory" :disabled="refreshingHistory">
+          {{ refreshingHistory ? 'Refreshing...' : 'Refresh List' }}
+        </button>
+      </div>
+
+      <div v-if="submissionHistory.length === 0" class="empty-state compact">
+        <p>No submissions yet. Submit a practice exercise to see it here.</p>
+      </div>
+
+      <div v-else class="history-grid">
+        <button
+          v-for="submission in submissionHistory"
+          :key="submission._id"
+          class="history-item"
+          :class="{ active: selectedSubmissionId === submission._id }"
+          @click="selectSubmission(submission._id)"
+        >
+          <div class="history-item-top">
+            <strong>{{ submission.submissionType }}</strong>
+            <span class="history-badge" :class="submission.evaluationStatus">{{ submission.evaluationStatus }}</span>
+          </div>
+          <p v-if="submission.aiEvaluation?.score !== undefined">Score: {{ Math.round(submission.aiEvaluation.score) }}/100</p>
+          <p v-else>Awaiting score</p>
+          <small>{{ formatSubmissionDate(submission.createdAt) }}</small>
+        </button>
+      </div>
+    </section>
+
+    <section v-if="selectedSubmission" class="submission-detail card-shell">
+      <div class="section-head">
+        <div>
+          <h3>Submission Detail</h3>
+          <p>Review the grade and feedback for this attempt.</p>
+        </div>
+        <button
+          class="btn-secondary"
+          @click="refreshSubmissionDetail"
+          :disabled="refreshingSubmission"
+        >
+          {{ refreshingSubmission ? 'Checking...' : 'Retry Check' }}
+        </button>
+      </div>
+
+      <p class="feedback-meta">
+        Type: <strong>{{ selectedSubmission.submissionType }}</strong>
+        <span>•</span>
+        Status: <strong>{{ selectedSubmission.evaluationStatus }}</strong>
+        <span v-if="selectedSubmission.evaluationError">•</span>
+        <strong v-if="selectedSubmission.evaluationError" class="failure-label">{{ selectedSubmission.evaluationError }}</strong>
+      </p>
+
+      <div v-if="selectedSubmission.evaluationStatus === 'pending'" class="feedback-body">
+        <p>This submission is still being evaluated. Use Retry Check to refresh the status.</p>
+      </div>
+
+      <div v-else-if="selectedSubmission.evaluationStatus === 'failed'" class="feedback-body">
+        <p>This submission failed evaluation. Use Retry Check after an admin re-evaluates it.</p>
+      </div>
+
+      <div v-else-if="selectedSubmission.aiEvaluation" class="feedback-body">
+        <p class="score">Score: {{ Math.round(selectedSubmission.aiEvaluation.score) }}/100</p>
+        <p>{{ selectedSubmission.aiEvaluation.feedback }}</p>
+
+        <div v-if="selectedSubmission.aiEvaluation.strengths?.length">
+          <h4>Strengths</h4>
+          <ul>
+            <li v-for="(item, idx) in selectedSubmission.aiEvaluation.strengths" :key="`detail-s-${idx}`">{{ item }}</li>
+          </ul>
+        </div>
+
+        <div v-if="selectedSubmission.aiEvaluation.areasForImprovement?.length">
+          <h4>Areas To Improve</h4>
+          <ul>
+            <li v-for="(item, idx) in selectedSubmission.aiEvaluation.areasForImprovement" :key="`detail-i-${idx}`">{{ item }}</li>
+          </ul>
+        </div>
+
+        <div v-if="selectedSubmission.aiEvaluation.suggestedNextSteps?.length">
+          <h4>Suggested Next Steps</h4>
+          <ul>
+            <li v-for="(item, idx) in selectedSubmission.aiEvaluation.suggestedNextSteps" :key="`detail-n-${idx}`">{{ item }}</li>
           </ul>
         </div>
       </div>
@@ -226,6 +321,10 @@ let evaluationPollInterval = null;
 
 const latestSubmission = ref(null);
 const refreshingFeedback = ref(false);
+const submissionHistory = ref([]);
+const selectedSubmissionId = ref('');
+const refreshingHistory = ref(false);
+const refreshingSubmission = ref(false);
 
 // Simulations
 const simulationResources = ref([]);
@@ -236,6 +335,9 @@ const simulationReason = ref('');
 const submittingSimulation = ref(false);
 const policyResources = ref([]);
 const currentPolicyGuidance = computed(() => policyResources.value[0] || null);
+const selectedSubmission = computed(() => {
+  return submissionHistory.value.find((item) => item._id === selectedSubmissionId.value) || latestSubmission.value;
+});
 
 const onSimulationTabActive = async () => {
   if (simulationResources.value.length === 0 && !loadingResources.value) {
@@ -266,7 +368,49 @@ const setLatestSubmission = async (submissionId) => {
   const submission = await getSubmission(submissionId);
   if (submission) {
     latestSubmission.value = submission;
+    selectedSubmissionId.value = submission._id;
+    await loadSubmissionHistory(false);
   }
+};
+
+const loadSubmissionHistory = async (showSpinner = true) => {
+  if (showSpinner) refreshingHistory.value = true;
+  const submissions = await getUserSubmissions();
+  submissionHistory.value = submissions;
+
+  if (!selectedSubmissionId.value && submissions.length > 0) {
+    selectedSubmissionId.value = submissions[0]._id;
+  }
+
+  if (submissions.length > 0) {
+    const selected = submissions.find((item) => item._id === selectedSubmissionId.value) || submissions[0];
+    latestSubmission.value = selected;
+    selectedSubmissionId.value = selected._id;
+  }
+
+  if (showSpinner) refreshingHistory.value = false;
+};
+
+const selectSubmission = async (submissionId) => {
+  selectedSubmissionId.value = submissionId;
+  const submission = submissionHistory.value.find((item) => item._id === submissionId);
+  if (submission) {
+    latestSubmission.value = submission;
+  } else {
+    await refreshSubmissionDetail();
+  }
+};
+
+const refreshSubmissionDetail = async () => {
+  if (!selectedSubmissionId.value) return;
+  refreshingSubmission.value = true;
+  const submission = await getSubmission(selectedSubmissionId.value);
+  if (submission) {
+    latestSubmission.value = submission;
+    const index = submissionHistory.value.findIndex((item) => item._id === submission._id);
+    if (index !== -1) submissionHistory.value[index] = submission;
+  }
+  refreshingSubmission.value = false;
 };
 
 const refreshLatestFeedback = async () => {
@@ -322,6 +466,7 @@ const submitSimulation = async () => {
     showSuccess('Simulation submitted! Your response is being evaluated.');
     await setLatestSubmission(result.submissionId);
     startEvaluationPolling(result.submissionId);
+    await loadSubmissionHistory(false);
     simulationReason.value = '';
     selectedOption.value = '';
     
@@ -399,6 +544,7 @@ const submitDebate = async () => {
     showSuccess('Debate response submitted. Great effort.');
     await setLatestSubmission(result.submissionId);
     startEvaluationPolling(result.submissionId);
+    await loadSubmissionHistory(false);
     debateResponse.value = '';
     resetTimer();
     
@@ -433,6 +579,7 @@ const submitPolicy = async () => {
     showSuccess('Policy draft submitted successfully. Keep refining your ideas.');
     await setLatestSubmission(result.submissionId);
     startEvaluationPolling(result.submissionId);
+    await loadSubmissionHistory(false);
     policyTitle.value = '';
     policyProblem.value = '';
     policyProposal.value = '';
@@ -445,12 +592,9 @@ const submitPolicy = async () => {
 
 onMounted(async () => {
   await loadAllResources();
-  const submissions = await getUserSubmissions();
-  if (submissions.length > 0) {
-    latestSubmission.value = submissions[0];
-    if (submissions[0].evaluationStatus === 'pending') {
-      startEvaluationPolling(submissions[0]._id);
-    }
+  await loadSubmissionHistory();
+  if (latestSubmission.value?.evaluationStatus === 'pending') {
+    startEvaluationPolling(latestSubmission.value._id);
   }
 });
 
@@ -472,6 +616,10 @@ watch(() => activeTab.value, (newTab) => {
     loadAllResources();
   }
 });
+
+function formatSubmissionDate(value) {
+  return new Date(value).toLocaleString();
+}
 </script>
 
 <style scoped>
@@ -596,6 +744,109 @@ watch(() => activeTab.value, (newTab) => {
 .score {
   font-weight: 800;
   color: #2b1550;
+}
+
+.failure-reason {
+  margin-top: 0.5rem !important;
+  color: #8a1f2d !important;
+  font-size: 0.92rem !important;
+}
+
+.card-shell {
+  border: 1px solid #e5dcf2;
+  background: #faf8fc;
+  border-radius: 12px;
+  padding: 0.9rem;
+  margin-bottom: 0.9rem;
+}
+
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.8rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.section-head h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #2f1b49;
+}
+
+.section-head p {
+  margin: 0.2rem 0 0;
+  color: #5f5574;
+  font-size: 0.88rem;
+}
+
+.history-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.65rem;
+}
+
+.history-item {
+  text-align: left;
+  border: 1px solid #e5dcf2;
+  background: #fff;
+  border-radius: 10px;
+  padding: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.history-item.active {
+  border-color: #6b21a8;
+  box-shadow: 0 0 0 2px rgba(107, 33, 168, 0.12) inset;
+}
+
+.history-item-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+
+.history-item p {
+  margin: 0.15rem 0;
+  color: #5f5574;
+  font-size: 0.88rem;
+}
+
+.history-item small {
+  color: #7c6f8f;
+}
+
+.history-badge {
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.history-badge.pending {
+  background: #fff7d6;
+  color: #8b5e00;
+}
+
+.history-badge.completed {
+  background: #e3f7e8;
+  color: #166534;
+}
+
+.history-badge.failed {
+  background: #fde2e6;
+  color: #991b1b;
+}
+
+.compact {
+  padding: 1rem;
+}
+
+.failure-label {
+  color: #991b1b;
 }
 
 .scenario-card {
