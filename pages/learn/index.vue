@@ -1,30 +1,39 @@
 <template>
   <div class="learn-page container">
     <div class="header">
-        <NuxtLink to="/dashboard" class="back-link">← Back to Dashboard</NuxtLink>
-        <h2>Learning Center</h2>
+      <h2>Learning Modules</h2>
+      <p>Build your knowledge about governance, step by step.</p>
     </div>
 
-    <div v-if="pending" class="modules-grid">
-      <div class="glass-card module-card" v-for="n in 3" :key="`skeleton-${n}`">
-        <div class="skeleton skeleton-title"></div>
-        <div class="skeleton skeleton-line"></div>
-        <div class="skeleton skeleton-line short"></div>
-        <div class="skeleton skeleton-btn mt-4"></div>
-      </div>
-    </div>
-
-    <div v-else-if="!modules.length" class="glass-card empty-state">
-      <h3>No modules yet</h3>
-      <p>Learning content will appear here once modules are published.</p>
-    </div>
-    
-    <div v-else class="modules-grid">
-      <div class="glass-card module-card" v-for="mod in modules" :key="mod._id">
+    <div class="modules-grid">
+      <button
+        v-for="mod in modules"
+        :key="mod._id"
+        class="module-card"
+        :class="{
+          completed: mod.status === 'completed',
+          locked: mod.status === 'locked'
+        }"
+        :disabled="mod.status === 'locked'"
+        @click="openModule(mod)"
+      >
+        <div class="module-top-row">
+          <span class="module-icon">{{ mod.icon }}</span>
+          <span v-if="mod.status === 'completed'" class="state-icon">✓</span>
+          <span v-else-if="mod.status === 'locked'" class="state-icon">🔒</span>
+        </div>
         <h3>{{ mod.title }}</h3>
         <p class="desc">{{ mod.description }}</p>
-        <NuxtLink :to="`/learn/${mod._id}`" class="btn-primary mt-4 inline-block">Start Module</NuxtLink>
-      </div>
+        <span class="status-chip" :class="mod.status">{{ mod.statusLabel }}</span>
+      </button>
+    </div>
+
+    <div v-if="pending" class="loading-state">Loading modules...</div>
+
+    <div v-if="loadError" class="load-error">Could not fetch modules from server.</div>
+
+    <div v-else-if="!pending && !modules.length" class="load-error">
+      No modules available yet.
     </div>
   </div>
 </template>
@@ -32,46 +41,164 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 
-const modules = ref([]);
-const pending = ref(true);
+const { error: showError } = useToast();
 const config = useRuntimeConfig();
+const pending = ref(true);
+const loadError = ref(false);
+const modules = ref([]);
 
 onMounted(async () => {
-    try {
-    const data = await $fetch(`${config.public.apiBase}/modules`);
-        modules.value = data;
-    } catch(err) {
-        console.error(err);
-    } finally {
-        pending.value = false;
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    const data = await $fetch(`${config.public.apiBase}/modules`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (Array.isArray(data) && data.length) {
+      modules.value = data.map((mod, index) => {
+        const done = !!mod.isCompleted;
+        const locked = !!mod.isLocked;
+        const status = done ? 'completed' : (locked ? 'locked' : 'available');
+        const lessonCount = mod.lessonsCount || 1;
+        return {
+          ...mod,
+          status,
+          statusLabel: done ? 'Completed' : (locked ? 'Locked' : `${lessonCount} lesson${lessonCount > 1 ? 's' : ''}`),
+          icon: ['🏛️', '🗳️', '🎤', '📜'][index % 4]
+        };
+      });
     }
+  } catch (err) {
+    loadError.value = true;
+    showError('Unable to load modules from backend.');
+  } finally {
+    pending.value = false;
+  }
 });
+
+const openModule = (mod) => {
+  if (mod.status === 'locked') {
+    showError('This module is locked. Complete earlier modules to unlock it.');
+    return;
+  }
+  navigateTo(`/learn/${mod._id}`);
+};
 </script>
 
 <style scoped>
-.learn-page { padding: 2rem 1rem; }
-.header { margin-bottom: 2rem; }
-.back-link { color: var(--text-muted); text-decoration: none; display: inline-block; margin-bottom: 1rem; }
-.back-link:hover { color: var(--primary); }
-.modules-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem; }
-.module-card { display: flex; flex-direction: column; }
-.desc { flex-grow: 1; color: var(--text-muted); line-height: 1.5; margin-bottom: 1.5rem; }
-.mt-4 { margin-top: auto; }
-.inline-block { display: inline-block; text-align: center; text-decoration: none; }
-.empty-state { text-align: center; max-width: 640px; margin: 1rem auto 0; }
-.empty-state p { color: var(--text-muted); margin-top: 0.5rem; }
-.skeleton {
-  border-radius: 8px;
-  background: linear-gradient(90deg, #eceff3 25%, #f6f8fa 37%, #eceff3 63%);
-  background-size: 400% 100%;
-  animation: shimmer 1.25s ease-in-out infinite;
+.learn-page {
+  padding: 1.4rem 1rem 2rem;
 }
-.skeleton-title { width: 60%; height: 1.1rem; margin-bottom: 1rem; }
-.skeleton-line { width: 100%; height: 0.9rem; margin-bottom: 0.6rem; }
-.skeleton-line.short { width: 70%; }
-.skeleton-btn { width: 45%; height: 2.5rem; }
-@keyframes shimmer {
-  0% { background-position: 100% 0; }
-  100% { background-position: 0 0; }
+
+.header {
+  margin-bottom: 1rem;
+}
+
+.header h2 {
+  color: #221337;
+  font-size: clamp(1.35rem, 2.3vw, 1.85rem);
+  margin-bottom: 0.3rem;
+}
+
+.header p {
+  color: var(--text-muted);
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.modules-grid {
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+.module-card {
+  text-align: left;
+  border: 1px solid #e6dff0;
+  border-radius: 14px;
+  background: #fff;
+  padding: 1rem;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.module-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+.module-card.completed {
+  border-color: #86d7b5;
+  box-shadow: 0 0 0 2px rgba(82, 187, 138, 0.12) inset;
+}
+
+.module-card.locked {
+  cursor: not-allowed;
+  opacity: 0.9;
+}
+
+.module-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.55rem;
+}
+
+.module-icon {
+  font-size: 1.35rem;
+}
+
+.state-icon {
+  color: #6f6183;
+  font-size: 0.95rem;
+}
+
+.module-card h3 {
+  color: #1f1430;
+  margin-bottom: 0.35rem;
+  font-size: 1.18rem;
+  line-height: 1.35;
+}
+
+.desc {
+  margin: 0 0 0.8rem;
+  color: #655b78;
+  line-height: 1.45;
+  font-size: 0.95rem;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.2rem 0.65rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.status-chip.completed,
+.status-chip.available {
+  background: #6b21a8;
+  color: #fff;
+}
+
+.status-chip.locked {
+  background: #ece9f3;
+  color: #6c5e81;
+}
+
+.loading-state,
+.load-error {
+  margin-top: 0.6rem;
+  color: #6f6183;
+  font-size: 0.9rem;
+}
+
+@media (min-width: 900px) {
+  .modules-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 </style>
