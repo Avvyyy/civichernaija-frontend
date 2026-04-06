@@ -127,12 +127,6 @@ const statCards = computed(() => [
     colorClass: 'icon-primary'
   },
   {
-    label: 'Lessons Done',
-    value: String(completedLessonsCount.value),
-    icon: TrendingUp,
-    colorClass: 'icon-success'
-  },
-  {
     label: 'Simulations',
     value: String(simulationsCompleted.value),
     icon: Zap,

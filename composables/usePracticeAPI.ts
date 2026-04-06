@@ -57,6 +57,12 @@ interface PracticeStats {
   averageScore: number;
 }
 
+interface GroupedPracticeResources {
+  simulations: SimulationResource[];
+  debates: DebateResource[];
+  policyGuidance: PolicyGuidanceResource[];
+}
+
 export const usePracticeAPI = () => {
   const isLoading = ref(false);
   const error = ref<string | null>(null);
@@ -120,6 +126,32 @@ export const usePracticeAPI = () => {
       error.value = handleError(err);
       console.error('Error fetching policy guidance:', err);
       return [];
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  async function getAllPracticeResources(): Promise<GroupedPracticeResources> {
+    try {
+      isLoading.value = true;
+      error.value = null;
+      const response = await fetch(`${API_BASE}/practice/resources/all`);
+      if (!response.ok) throw new Error('Failed to fetch practice resources');
+
+      const data = await response.json();
+      return {
+        simulations: data.simulations || [],
+        debates: data.debates || [],
+        policyGuidance: data.policyGuidance || []
+      };
+    } catch (err) {
+      error.value = handleError(err);
+      console.error('Error fetching grouped practice resources:', err);
+      return {
+        simulations: [],
+        debates: [],
+        policyGuidance: []
+      };
     } finally {
       isLoading.value = false;
     }
@@ -303,6 +335,7 @@ export const usePracticeAPI = () => {
     getSimulationResources,
     getDebateResources,
     getPolicyResources,
+    getAllPracticeResources,
     submitSimulation,
     submitDebate,
     submitPolicy,

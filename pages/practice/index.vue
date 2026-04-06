@@ -17,6 +17,55 @@
       </button>
     </div>
 
+    <section v-if="latestSubmission" class="feedback-panel" :class="latestSubmission.evaluationStatus">
+      <div class="feedback-head">
+        <h3>AI Feedback</h3>
+        <button class="btn-secondary" @click="refreshLatestFeedback" :disabled="refreshingFeedback">
+          {{ refreshingFeedback ? 'Refreshing...' : 'Refresh' }}
+        </button>
+      </div>
+
+      <p class="feedback-meta">
+        Type: <strong>{{ latestSubmission.submissionType }}</strong>
+        <span>•</span>
+        Status: <strong>{{ latestSubmission.evaluationStatus }}</strong>
+      </p>
+
+      <div v-if="latestSubmission.evaluationStatus === 'pending'" class="feedback-body">
+        <p>Your response has been submitted. AI evaluation is in progress. This usually takes a few seconds.</p>
+      </div>
+
+      <div v-else-if="latestSubmission.evaluationStatus === 'failed'" class="feedback-body">
+        <p>Evaluation failed for this submission. You can submit again or refresh to retry checking.</p>
+      </div>
+
+      <div v-else-if="latestSubmission.aiEvaluation" class="feedback-body">
+        <p class="score">Score: {{ Math.round(latestSubmission.aiEvaluation.score) }}/100</p>
+        <p>{{ latestSubmission.aiEvaluation.feedback }}</p>
+
+        <div v-if="latestSubmission.aiEvaluation.strengths?.length">
+          <h4>Strengths</h4>
+          <ul>
+            <li v-for="(item, idx) in latestSubmission.aiEvaluation.strengths" :key="`s-${idx}`">{{ item }}</li>
+          </ul>
+        </div>
+
+        <div v-if="latestSubmission.aiEvaluation.areasForImprovement?.length">
+          <h4>Areas To Improve</h4>
+          <ul>
+            <li v-for="(item, idx) in latestSubmission.aiEvaluation.areasForImprovement" :key="`i-${idx}`">{{ item }}</li>
+          </ul>
+        </div>
+
+        <div v-if="latestSubmission.aiEvaluation.suggestedNextSteps?.length">
+          <h4>Suggested Next Steps</h4>
+          <ul>
+            <li v-for="(item, idx) in latestSubmission.aiEvaluation.suggestedNextSteps" :key="`n-${idx}`">{{ item }}</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
     <section v-if="activeTab === 'simulations'" class="tab-panel">
       <div v-if="loadingResources" class="loading-state">
         <p>Loading simulations...</p>
@@ -105,40 +154,47 @@
     </section>
 
     <section v-else class="tab-panel">
-      <article class="scenario-card">
-        <span class="topic-pill">Policy Draft</span>
-        <h3>Draft a Policy Proposal</h3>
-        <p>Think about a problem in your community. Write a short policy proposal to address it.</p>
-      </article>
-
-      <div class="policy-fields">
-        <input 
-          v-model="policyTitle" 
-          type="text" 
-          placeholder="Policy title (example: Safer Roads Initiative)"
-          :disabled="submittingPolicy"
-        />
-        <textarea
-          v-model="policyProblem"
-          rows="3"
-          placeholder="What problem are you trying to solve?"
-          :disabled="submittingPolicy"
-        ></textarea>
-        <textarea
-          v-model="policyProposal"
-          rows="6"
-          placeholder="Describe your proposed policy, who it affects, and how it will be implemented."
-          :disabled="submittingPolicy"
-        ></textarea>
+      <div v-if="loadingResources" class="loading-state">
+        <p>Loading policy guidance...</p>
       </div>
+      <div v-else>
+        <article class="scenario-card">
+          <span class="topic-pill">Policy Draft</span>
+          <h3>{{ currentPolicyGuidance?.policyGuidanceTitle || 'Draft a Policy Proposal' }}</h3>
+          <p>
+            {{ currentPolicyGuidance?.policyGuidanceContent || 'Think about a problem in your community. Write a short policy proposal to address it.' }}
+          </p>
+        </article>
 
-      <button 
-        class="btn-primary submit-btn" 
-        @click="submitPolicy"
-        :disabled="submittingPolicy || isLoading"
-      >
-        {{ submittingPolicy ? 'Submitting...' : 'Submit Draft' }}
-      </button>
+        <div class="policy-fields">
+          <input
+            v-model="policyTitle"
+            type="text"
+            placeholder="Policy title (example: Safer Roads Initiative)"
+            :disabled="submittingPolicy"
+          />
+          <textarea
+            v-model="policyProblem"
+            rows="3"
+            placeholder="What problem are you trying to solve?"
+            :disabled="submittingPolicy"
+          ></textarea>
+          <textarea
+            v-model="policyProposal"
+            rows="6"
+            placeholder="Describe your proposed policy, who it affects, and how it will be implemented."
+            :disabled="submittingPolicy"
+          ></textarea>
+        </div>
+
+        <button
+          class="btn-primary submit-btn"
+          @click="submitPolicy"
+          :disabled="submittingPolicy || isLoading"
+        >
+          {{ submittingPolicy ? 'Submitting...' : 'Submit Draft' }}
+        </button>
+      </div>
     </section>
   </div>
 </template>
@@ -150,11 +206,12 @@ import { usePracticeAPI } from '~/composables/usePracticeAPI';
 const { error: showError, success: showSuccess } = useToast();
 const {
   isLoading,
-  getSimulationResources,
-  getDebateResources,
+  getAllPracticeResources,
   submitSimulation: apiSubmitSimulation,
   submitDebate: apiSubmitDebate,
-  submitPolicy: apiSubmitPolicy
+  submitPolicy: apiSubmitPolicy,
+  getSubmission,
+  getUserSubmissions
 } = usePracticeAPI();
 
 const tabs = [
@@ -165,6 +222,10 @@ const tabs = [
 
 const activeTab = ref('simulations');
 const loadingResources = ref(false);
+let evaluationPollInterval = null;
+
+const latestSubmission = ref(null);
+const refreshingFeedback = ref(false);
 
 // Simulations
 const simulationResources = ref([]);
@@ -173,21 +234,72 @@ const currentSimulationIndex = ref(0);
 const selectedOption = ref('');
 const simulationReason = ref('');
 const submittingSimulation = ref(false);
+const policyResources = ref([]);
+const currentPolicyGuidance = computed(() => policyResources.value[0] || null);
 
 const onSimulationTabActive = async () => {
   if (simulationResources.value.length === 0 && !loadingResources.value) {
-    await loadSimulations();
+    await loadAllResources();
   }
 };
 
-const loadSimulations = async () => {
+const loadAllResources = async () => {
   loadingResources.value = true;
-  const resources = await getSimulationResources();
-  simulationResources.value = resources;
-  if (resources.length > 0) {
-    currentSimulation.value = resources[currentSimulationIndex.value];
+  const resources = await getAllPracticeResources();
+
+  simulationResources.value = resources.simulations || [];
+  debateResources.value = resources.debates || [];
+  policyResources.value = resources.policyGuidance || [];
+
+  if (simulationResources.value.length > 0) {
+    currentSimulation.value = simulationResources.value[currentSimulationIndex.value];
   }
+
+  if (debateResources.value.length === 0) {
+    currentDebateIndex.value = 0;
+  }
+
   loadingResources.value = false;
+};
+
+const setLatestSubmission = async (submissionId) => {
+  const submission = await getSubmission(submissionId);
+  if (submission) {
+    latestSubmission.value = submission;
+  }
+};
+
+const refreshLatestFeedback = async () => {
+  if (!latestSubmission.value?._id) return;
+  refreshingFeedback.value = true;
+  await setLatestSubmission(latestSubmission.value._id);
+  refreshingFeedback.value = false;
+};
+
+const startEvaluationPolling = (submissionId) => {
+  if (evaluationPollInterval) {
+    clearInterval(evaluationPollInterval);
+  }
+
+  evaluationPollInterval = setInterval(async () => {
+    const submission = await getSubmission(submissionId);
+    if (!submission) return;
+
+    latestSubmission.value = submission;
+
+    if (submission.evaluationStatus === 'completed') {
+      clearInterval(evaluationPollInterval);
+      evaluationPollInterval = null;
+      showSuccess('AI evaluation is ready. Check your feedback above.');
+      return;
+    }
+
+    if (submission.evaluationStatus === 'failed') {
+      clearInterval(evaluationPollInterval);
+      evaluationPollInterval = null;
+      showError('AI evaluation failed for this submission. Please try again.');
+    }
+  }, 5000);
 };
 
 const submitSimulation = async () => {
@@ -202,12 +314,14 @@ const submitSimulation = async () => {
 
   submittingSimulation.value = true;
   try {
-    await apiSubmitSimulation(
+    const result = await apiSubmitSimulation(
       currentSimulation.value._id,
       selectedOption.value,
       simulationReason.value
     );
     showSuccess('Simulation submitted! Your response is being evaluated.');
+    await setLatestSubmission(result.submissionId);
+    startEvaluationPolling(result.submissionId);
     simulationReason.value = '';
     selectedOption.value = '';
     
@@ -234,15 +348,8 @@ const submittingDebate = ref(false);
 
 const onDebateTabActive = async () => {
   if (debateResources.value.length === 0 && !loadingResources.value) {
-    await loadDebates();
+    await loadAllResources();
   }
-};
-
-const loadDebates = async () => {
-  loadingResources.value = true;
-  const resources = await getDebateResources();
-  debateResources.value = resources;
-  loadingResources.value = false;
 };
 
 const formattedTime = computed(() => {
@@ -283,13 +390,15 @@ const submitDebate = async () => {
   submittingDebate.value = true;
   try {
     const currentDebate = debateResources.value[currentDebateIndex.value];
-    await apiSubmitDebate(
+    const result = await apiSubmitDebate(
       currentDebate._id,
       currentDebateIndex.value,
       debateResponse.value,
       120 - time.value
     );
     showSuccess('Debate response submitted. Great effort.');
+    await setLatestSubmission(result.submissionId);
+    startEvaluationPolling(result.submissionId);
     debateResponse.value = '';
     resetTimer();
     
@@ -316,12 +425,14 @@ const submitPolicy = async () => {
 
   submittingPolicy.value = true;
   try {
-    await apiSubmitPolicy(
+    const result = await apiSubmitPolicy(
       policyTitle.value,
       policyProblem.value,
       policyProposal.value
     );
     showSuccess('Policy draft submitted successfully. Keep refining your ideas.');
+    await setLatestSubmission(result.submissionId);
+    startEvaluationPolling(result.submissionId);
     policyTitle.value = '';
     policyProblem.value = '';
     policyProposal.value = '';
@@ -333,16 +444,32 @@ const submitPolicy = async () => {
 };
 
 onMounted(async () => {
-  await loadSimulations();
+  await loadAllResources();
+  const submissions = await getUserSubmissions();
+  if (submissions.length > 0) {
+    latestSubmission.value = submissions[0];
+    if (submissions[0].evaluationStatus === 'pending') {
+      startEvaluationPolling(submissions[0]._id);
+    }
+  }
 });
 
 onBeforeUnmount(() => {
   clearInterval(interval);
+  if (evaluationPollInterval) {
+    clearInterval(evaluationPollInterval);
+  }
 });
 
 watch(() => activeTab.value, (newTab) => {
+  if (newTab === 'simulations') {
+    onSimulationTabActive();
+  }
   if (newTab === 'mockDebate') {
     onDebateTabActive();
+  }
+  if (newTab === 'policyDraft' && policyResources.value.length === 0) {
+    loadAllResources();
   }
 });
 </script>
@@ -397,6 +524,78 @@ watch(() => activeTab.value, (newTab) => {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+.feedback-panel {
+  border: 1px solid #e5dcf2;
+  background: #faf8fc;
+  border-radius: 12px;
+  padding: 0.9rem;
+  margin-bottom: 0.9rem;
+}
+
+.feedback-panel.pending {
+  border-color: #f3e7b4;
+  background: #fffaf0;
+}
+
+.feedback-panel.completed {
+  border-color: #d6ead8;
+  background: #f7fcf7;
+}
+
+.feedback-panel.failed {
+  border-color: #f1cfd4;
+  background: #fff7f8;
+}
+
+.feedback-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.35rem;
+}
+
+.feedback-head h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #2f1b49;
+}
+
+.feedback-meta {
+  margin: 0 0 0.5rem;
+  color: #5f5574;
+  font-size: 0.88rem;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.feedback-body p {
+  margin: 0.3rem 0;
+}
+
+.feedback-body h4 {
+  margin: 0.7rem 0 0.3rem;
+  font-size: 0.92rem;
+  color: #321c4d;
+}
+
+.feedback-body ul {
+  margin: 0;
+  padding-left: 1rem;
+  color: #5f5574;
+}
+
+.feedback-body li {
+  margin-bottom: 0.2rem;
+}
+
+.score {
+  font-weight: 800;
+  color: #2b1550;
 }
 
 .scenario-card {
