@@ -23,7 +23,7 @@
           </div>
 
           <h1>
-            Your voice matters in <span class="brand-civic">Nigeria's</span>
+            Your voice matters in <span class="brand-civic">Nigeria's{{ " " }}</span>
             <span class="brand-her">future</span>
           </h1>
 
