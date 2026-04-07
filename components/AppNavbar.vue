@@ -12,6 +12,8 @@
                         Practice</NuxtLink>
                     <NuxtLink to="/opportunities" class="nav-link"
                         :class="{ active: route.path.startsWith('/opportunities') }">Opportunities</NuxtLink>
+                    <NuxtLink to="/inspired" class="nav-link"
+                        :class="{ active: route.path.startsWith('/inspired') }">Get Inspired</NuxtLink>
                 </div>
                 <button @click="logout" class="btn-primary logout-btn">Logout</button>
             </div>
@@ -52,6 +54,14 @@
                 @click="closeMenu"
             >
                 Opportunities
+            </NuxtLink>
+            <NuxtLink
+                to="/inspired"
+                class="mobile-link"
+                :class="{ active: route.path.startsWith('/inspired') }"
+                @click="closeMenu"
+            >
+                Get Inspired
             </NuxtLink>
             <button @click="logoutMobile" class="btn-primary mobile-logout">Logout</button>
         </div>
